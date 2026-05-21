@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Panel - Library</title>
+</head>
+<body>
+
+<div th:replace="~{fragments/navbar :: navbar}"></div>
+
+<h2>Admin Panel</h2>
+
+<div>
+  <button onclick="showTab('books')">Books</button>
+  <button onclick="showTab('authors')">Authors</button>
+  <button onclick="showTab('categories')">Categories</button>
+  <button onclick="showTab('borrows')">All Borrows</button>
+</div>
+
+<hr/>
+
+<!-- BOOKS TAB -->
+<div id="tab-books">
+  <h3>Add Book</h3>
+  <input type="text" id="book-title" placeholder="Title" required/><br/>
+  <input type="text" id="book-isbn" placeholder="ISBN"/><br/>
+  <input type="text" id="book-description" placeholder="Description"/><br/>
+  <input type="number" id="book-year" placeholder="Published Year"/><br/>
+  <input type="number" id="book-copies" placeholder="Total Copies" required/><br/>
+  <select id="book-category"><option value="">Select Category</option></select><br/><br/>
+  <button onclick="createBook()">Add Book</button>
+  <div id="book-msg" style="display:none;"></div>
+
+
+  <hr/>
+  <h3>Books List</h3>
+  <div id="admin-books-list">Loading...</div>
+</div>
+
+<!-- AUTHORS TAB -->
+<div id="tab-authors" style="display:none;">
+  <h3>Add Author</h3>
+  <input type="text" id="author-first" placeholder="First Name" required/><br/>
+  <input type="text" id="author-last" placeholder="Last Name" required/><br/>
+  <input type="text" id="author-bio" placeholder="Bio"/><br/><br/>
+  <button onclick="createAuthor()">Add Author</button>
+  <div id="author-msg" style="display:none;"></div>
+
+  <hr/>
+  <h3>Authors List</h3>
+  <div id="authors-list">Loading...</div>
+</div>
+
+<!-- CATEGORIES TAB -->
+<div id="tab-categories" style="display:none;">
+  <h3>Add Category</h3>
+  <input type="text" id="cat-name" placeholder="Name" required/><br/>
+  <input type="text" id="cat-desc" placeholder="Description"/><br/><br/>
+  <button onclick="createCategory()">Add Category</button>
+  <div id="cat-msg" style="display:none;"></div>
+
+  <hr/>
+  <h3>Categories List</h3>
+  <div id="categories-list">Loading...</div>
+</div>
+
+<!-- BORROWS TAB -->
+<div id="tab-borrows" style="display:none;">
+  <h3>All Borrow Records</h3>
+  <div id="all-borrows-list">Loading...</div>
+</div>
+
+<script>
+  function getCookie(name) {
+      return document.cookie.split(';').map(c => c.trim())
+          .find(c => c.startsWith(name + '='))?.split('=')[1];
+  }
+
+  function authHeader() {
+      return {'Authorization': 'Bearer ' + getCookie('token')};
+  }
+
+  function jsonHeader() {
+      return {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + getCookie('token')
+      };
+  }
+
+  // Проверка что пользователь ADMIN
+  if (!getCookie('token') || getCookie('role') !== 'ADMIN') {
+      window.location.href = '/';
+  }
+
+  function showTab(tab) {
+      ['books', 'authors', 'categories', 'borrows'].forEach(t => {
+          document.getElementById('tab-' + t).style.display = t === tab ? 'block' : 'none';
+      });
+  }
+
+  function showMsg(id, text, success) {
+      const el = document.getElementById(id);
+      el.style.display = 'block';
+      el.style.color = success ? 'green' : 'red';
+      el.textContent = text;
+  }
+
+  // ---- BOOKS ----
+  async function loadAdminBooks() {
+      const res = await fetch('/api/books?size=100', {headers: authHeader()});
+      if (!res.ok) return;
+      const data = await res.json();
+      document.getElementById('admin-books-list').innerHTML = data.content.map(b => `
+          <div style="border:1px solid #ccc; margin:5px; padding:8px;">
+              <b>${b.id}. ${b.title}</b> |
+              Category: ${b.categoryName || '-'} |
+              Copies: ${b.availableCopies}/${b.totalCopies}
+              <button onclick="deleteBook(${b.id})">Delete</button>
+          </div>
+      `).join('') || '<p>No books.</p>';
+  }
+
+  async function createBook() {
+      const categoryId = document.getElementById('book-category').value;
+      if (!categoryId) { showMsg('book-msg', 'Please select a category', false); return; }
+      const copies = parseInt(document.getElementById('book-copies').value);
+      if (!copies || copies < 1) { showMsg('book-msg', 'Enter valid copies count', false); return; }
+
+      const res = await fetch('/api/books', {
+          method: 'POST',
+          headers: jsonHeader(),
+          body: JSON.stringify({
+              title: document.getElementById('book-title').value,
+              isbn: document.getElementById('book-isbn').value || null,
+              description: document.getElementById('book-description').value || null,
+              publishedYear: parseInt(document.getElementById('book-year').value) || null,
+              totalCopies: copies,
+              categoryId: parseInt(categoryId),
+              authorIds: []
+          })
+      });
+
+      if (res.ok) {
+          showMsg('book-msg', 'Book created successfully!', true);
+          loadAdminBooks();
+      } else {
+          const err = await res.json();
+          showMsg('book-msg', err.message || 'Failed to create book', false);
+      }
+  }
+
+  async function deleteBook(id) {
+      if (!confirm('Delete this book?')) return;
+      const res = await fetch(`/api/books/${id}`, {method: 'DELETE', headers: authHeader()});
+      if (res.ok) loadAdminBooks();
+      else alert('Failed to delete book');
+  }
+
+
+
+  // ---- AUTHORS ----
+  async function loadAuthors() {
+      const res = await fetch('/api/authors', {headers: authHeader()});
+      if (!res.ok) return;
+      const authors = await res.json();
+      document.getElementById('authors-list').innerHTML = authors.map(a => `
+          <div style="border:1px solid #ccc; margin:5px; padding:8px;">
+              <b>${a.id}. ${a.firstName} ${a.lastName}</b>
+              ${a.bio ? '- ' + a.bio : ''}
+              <button onclick="deleteAuthor(${a.id})">Delete</button>
+          </div>
+      `).join('') || '<p>No authors.</p>';
+  }
+
+  async function createAuthor() {
+      const firstName = document.getElementById('author-first').value;
+      const lastName = document.getElementById('author-last').value;
+      if (!firstName || !lastName) {
+          showMsg('author-msg', 'First and last name are required', false);
+          return;
+      }
+
+      const res = await fetch('/api/authors', {
+          method: 'POST',
+          headers: jsonHeader(),
+          body: JSON.stringify({
+              firstName,
+              lastName,
+              bio: document.getElementById('author-bio').value || null
+          })
+      });
+
+      if (res.ok) {
+          showMsg('author-msg', 'Author created!', true);
+          loadAuthors();
+      } else {
+          showMsg('author-msg', 'Failed to create author', false);
+      }
+  }
+
+  async function deleteAuthor(id) {
+      if (!confirm('Delete this author?')) return;
+      await fetch(`/api/authors/${id}`, {method: 'DELETE', headers: authHeader()});
+      loadAuthors();
+  }
+
+  // ---- CATEGORIES ----
+  async function loadCategories() {
+      const res = await fetch('/api/categories', {headers: authHeader()});
+      if (!res.ok) return;
+      const cats = await res.json();
+
+      document.getElementById('categories-list').innerHTML = cats.map(c => `
+          <div style="border:1px solid #ccc; margin:5px; padding:8px;">
+              <b>${c.id}. ${c.name}</b>
+              ${c.description ? '- ' + c.description : ''}
+              <button onclick="deleteCategory(${c.id})">Delete</button>
+          </div>
+      `).join('') || '<p>No categories.</p>';
+
+      const select = document.getElementById('book-category');
+      select.innerHTML = '<option value="">Select Category</option>';
+      cats.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.name;
+          select.appendChild(opt);
+      });
+  }
+
+  async function createCategory() {
+      const name = document.getElementById('cat-name').value;
+      if (!name) { showMsg('cat-msg', 'Name is required', false); return; }
+
+      const res = await fetch('/api/categories', {
+          method: 'POST',
+          headers: jsonHeader(),
+          body: JSON.stringify({
+              name,
+              description: document.getElementById('cat-desc').value || null
+          })
+      });
+
+      if (res.ok) {
+          showMsg('cat-msg', 'Category created!', true);
+          loadCategories();
+      } else {
+          const err = await res.json();
+          showMsg('cat-msg', err.message || 'Failed', false);
+      }
+  }
+
+  async function deleteCategory(id) {
+      if (!confirm('Delete this category?')) return;
+      await fetch(`/api/categories/${id}`, {method: 'DELETE', headers: authHeader()});
+      loadCategories();
+  }
+
+  // ---- BORROWS ----
+  async function loadAllBorrows() {
+      const res = await fetch('/api/borrows', {headers: authHeader()});
+      if (!res.ok) return;
+      const borrows = await res.json();
+      document.getElementById('all-borrows-list').innerHTML = borrows.map(b => `
+          <div style="border:1px solid #ccc; margin:5px; padding:8px;">
+              <b>${b.bookTitle}</b> |
+              User: ${b.userEmail} |
+              ${b.borrowDate} → ${b.dueDate} |
+              Status: <b style="color:${b.status === 'RETURNED' ? 'green' : b.status === 'OVERDUE' ? 'red' : 'orange'}">${b.status}</b>
+          </div>
+      `).join('') || '<p>No borrow records.</p>';
+  }
+
+  // Init — загружаем всё
+  loadCategories();
+  loadAdminBooks();
+  loadAuthors();
+  loadAllBorrows();
+</script>
+
+</body>
+</html>

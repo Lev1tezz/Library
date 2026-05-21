@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Borrows - Library</title>
+</head>
+<body>
+
+<div th:replace="~{fragments/navbar :: navbar}"></div>
+
+<h2>My Borrows</h2>
+
+<div id="borrows-container"><p>Loading...</p></div>
+
+<script>
+  function getCookie(name) {
+      return document.cookie.split(';').map(c => c.trim())
+          .find(c => c.startsWith(name + '='))?.split('=')[1];
+  }
+
+  function authHeader() {
+      return {'Authorization': 'Bearer ' + getCookie('token')};
+  }
+
+  if (!getCookie('token')) {
+      window.location.href = '/login';
+  }
+
+  async function loadMyBorrows() {
+      const res = await fetch('/api/borrows/my', {headers: authHeader()});
+      if (res.status === 401 || res.status === 403) {
+          window.location.href = '/login';
+          return;
+      }
+
+      const borrows = await res.json();
+      const container = document.getElementById('borrows-container');
+
+      if (!borrows.length) {
+          container.innerHTML = '<p>You have no borrows yet.</p>';
+          return;
+      }
+
+      container.innerHTML = borrows.map(b => `
+          <div style="border:1px solid #ccc; margin:8px 0; padding:10px;">
+              <h3>📖 ${b.bookTitle}</h3>
+              <p>Borrow Date: ${b.borrowDate}</p>
+              <p>Due Date: ${b.dueDate}</p>
+              <p>Status: <b style="color:${b.status === 'RETURNED' ? 'green' : b.status === 'OVERDUE' ? 'red' : 'orange'}">${b.status}</b></p>
+              ${b.status === 'BORROWED' ?
+                  `<button onclick="returnBook(${b.id})">Return Book</button>` : ''}
+          </div>
+      `).join('');
+  }
+
+  async function returnBook(recordId) {
+      const res = await fetch(`/api/borrows/${recordId}/return`, {
+          method: 'PUT',
+          headers: authHeader()
+      });
+      if (res.ok) {
+          alert('Book returned successfully!');
+          loadMyBorrows();
+      } else {
+          const err = await res.json();
+          alert(err.message || 'Failed to return');
+      }
+  }
+
+  loadMyBorrows();
+</script>
+
+</body>
+</html>

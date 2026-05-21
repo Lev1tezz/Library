@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<body>
+
+<nav th:fragment="navbar">
+  <a href="/"> Library</a> |
+  <a href="/">Books</a> |
+    <a href="/profile">My Profile</a> |
+  <a href="/borrows/my">My Borrows</a> |
+  <span id="admin-link" style="display:none;">
+        <a href="/admin">Admin Panel</a> |
+    </span>
+  <span id="auth-links">
+        <a href="/login">Login</a> |
+        <a href="/register">Register</a>
+    </span>
+  <span id="logout-link" style="display:none;">
+        <a href="#" onclick="logout(); return false;">Logout</a>
+    </span>
+
+  <script>
+    (function() {
+        function getCookie(name) {
+            return document.cookie.split(';').map(c => c.trim())
+                .find(c => c.startsWith(name + '='))?.split('=')[1];
+        }
+        const token = getCookie('token');
+        const role = getCookie('role');
+        if (token) {
+            document.getElementById('auth-links').style.display = 'none';
+            document.getElementById('logout-link').style.display = 'inline';
+        }
+        if (role === 'ADMIN') {
+            document.getElementById('admin-link').style.display = 'inline';
+        }
+    })();
+
+    function logout() {
+        document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        document.cookie = 'role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        window.location.href = '/login';
+    }
+  </script>
+</nav>
+
+</body>
+</html>

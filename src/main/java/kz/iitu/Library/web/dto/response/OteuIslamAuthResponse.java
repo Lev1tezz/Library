@@ -1,0 +1,13 @@
+package kz.iitu.Library.web.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+
+@Data
+@AllArgsConstructor
+public class OteuIslamAuthResponse {
+
+    private String token;
+    private String email;
+    private String role;
+}

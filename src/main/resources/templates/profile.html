@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Profile - Library</title>
+  <style>
+    .avatar-img { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 2px solid #ccc; }
+    .avatar-placeholder { width: 120px; height: 120px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+    .section { border: 1px solid #ccc; padding: 15px; margin: 15px 0; border-radius: 6px; }
+    .doc-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; padding: 6px; border-bottom: 1px solid #eee; }
+    .msg-success { color: green; }
+    .msg-error { color: red; }
+  </style>
+</head>
+<body>
+
+<div th:replace="~{fragments/navbar :: navbar}"></div>
+
+<h2>My Profile</h2>
+
+<!-- Информация о пользователе -->
+<div class="section">
+  <h3>Account Info</h3>
+  <div id="user-info">Loading...</div>
+</div>
+
+<!-- Аватарка -->
+<div class="section">
+  <h3>Avatar</h3>
+  <div id="avatar-container">
+    <div class="avatar-placeholder">👤</div>
+  </div>
+  <br/>
+  <form onsubmit="uploadAvatar(event)">
+    <input type="file" id="avatar-file" accept=".jpg,.jpeg,.png" required/>
+    <button type="submit">Upload Avatar</button>
+    <span style="font-size:12px; color:gray;"> JPEG/PNG, max 5MB</span>
+  </form>
+  <div id="avatar-msg" style="display:none;"></div>
+</div>
+
+<!-- Документы -->
+<div class="section">
+  <h3>My Documents</h3>
+  <div id="documents-container">Loading...</div>
+  <br/>
+  <form onsubmit="uploadDocuments(event)">
+    <input type="file" id="doc-files" accept=".pdf" multiple required/>
+    <button type="submit">Upload Documents</button>
+    <span style="font-size:12px; color:gray;"> PDF only, max 5MB each</span>
+  </form>
+  <div id="doc-msg" style="display:none;"></div>
+</div>
+
+<a href="/">← Back to Books</a>
+
+<script>
+  function getCookie(name) {
+      return document.cookie.split(';').map(c => c.trim())
+          .find(c => c.startsWith(name + '='))?.split('=')[1];
+  }
+
+  function authHeader() {
+      return {'Authorization': 'Bearer ' + getCookie('token')};
+  }
+
+  if (!getCookie('token')) {
+      window.location.href = '/login';
+  }
+
+  // ---- Загрузка данных пользователя ----
+  async function loadUserInfo() {
+      const res = await fetch('/api/profile/me', {headers: authHeader()});
+      if (!res.ok) return;
+      const user = await res.json();
+      document.getElementById('user-info').innerHTML = `
+          <p><b>Name:</b> ${user.firstName} ${user.lastName}</p>
+          <p><b>Email:</b> ${user.email}</p>
+          <p><b>Role:</b> ${user.role}</p>
+      `;
+  }
+
+  // ---- Аватарка ----
+  async function loadAvatar() {
+      const res = await fetch('/api/profile/avatar', {headers: authHeader()});
+      if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          document.getElementById('avatar-container').innerHTML =
+              `<img src="${url}" class="avatar-img" alt="Avatar"/>`;
+      }
+  }
+
+  async function uploadAvatar(e) {
+      e.preventDefault();
+      const file = document.getElementById('avatar-file').files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/profile/avatar', {
+          method: 'POST',
+          headers: authHeader(),
+          body: formData
+      });
+
+      const msg = document.getElementById('avatar-msg');
+      msg.style.display = 'block';
+      if (res.ok) {
+          msg.className = 'msg-success';
+          msg.textContent = 'Avatar uploaded successfully!';
+          loadAvatar();
+      } else {
+          const err = await res.json();
+          msg.className = 'msg-error';
+          msg.textContent = err.message || 'Upload failed';
+      }
+  }
+
+  // ---- Документы ----
+  async function loadDocuments() {
+      const res = await fetch('/api/profile/documents', {headers: authHeader()});
+      if (!res.ok) return;
+      const docs = await res.json();
+      const container = document.getElementById('documents-container');
+
+      if (!docs.length) {
+          container.innerHTML = '<p>No documents uploaded yet.</p>';
+          return;
+      }
+
+      container.innerHTML = docs.map(d => `
+          <div class="doc-row">
+              <span>📄 ${d.fileName}</span>
+              <span style="color:gray; font-size:12px;">${d.contentType}</span>
+              <span style="color:gray; font-size:12px;">${d.uploadedAt?.substring(0, 10)}</span>
+              <button onclick="downloadDoc(${d.id}, '${d.fileName}')">Download</button>
+              <button onclick="deleteDoc(${d.id})" style="color:red;">Delete</button>
+          </div>
+      `).join('');
+  }
+
+  async function uploadDocuments(e) {
+      e.preventDefault();
+      const files = document.getElementById('doc-files').files;
+      if (!files.length) return;
+
+      const formData = new FormData();
+      for (const file of files) {
+          formData.append('files', file);
+      }
+
+      const res = await fetch('/api/profile/documents', {
+          method: 'POST',
+          headers: authHeader(),
+          body: formData
+      });
+
+      const msg = document.getElementById('doc-msg');
+      msg.style.display = 'block';
+      if (res.ok) {
+          msg.className = 'msg-success';
+          msg.textContent = 'Documents uploaded successfully!';
+          loadDocuments();
+      } else {
+          const err = await res.json();
+          msg.className = 'msg-error';
+          msg.textContent = err.message || 'Upload failed';
+      }
+  }
+
+  async function downloadDoc(fileId, fileName) {
+      const res = await fetch(`/api/profile/documents/${fileId}/download`, {
+          headers: authHeader()
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+  }
+
+  async function deleteDoc(fileId) {
+      if (!confirm('Delete this document?')) return;
+      const res = await fetch(`/api/profile/documents/${fileId}`, {
+          method: 'DELETE',
+          headers: authHeader()
+      });
+      if (res.ok) {
+          loadDocuments();
+      } else {
+          alert('Failed to delete document');
+      }
+  }
+
+  // Init
+  loadUserInfo();
+  loadAvatar();
+  loadDocuments();
+</script>
+
+</body>
+</html>

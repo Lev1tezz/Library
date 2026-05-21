@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Book Detail - Library</title>
+</head>
+<body>
+
+<div th:replace="~{fragments/navbar :: navbar}"></div>
+
+<div id="book-container"><p>Loading...</p></div>
+
+<div id="borrow-section" style="display:none;">
+  <h3>Borrow this book</h3>
+  <label>Due Date:</label>
+  <input type="date" id="dueDate"/>
+  <button onclick="borrowBook()">Borrow</button>
+  <div id="borrow-msg" style="display:none;"></div>
+</div>
+
+
+<br/>
+<a href="/">← Back to Books</a>
+
+<script>
+  const bookId = window.location.pathname.split('/').pop();
+
+  function getCookie(name) {
+      return document.cookie.split(';').map(c => c.trim())
+          .find(c => c.startsWith(name + '='))?.split('=')[1];
+  }
+
+  function authHeader() {
+      return {'Authorization': 'Bearer ' + getCookie('token')};
+  }
+
+  if (!getCookie('token')) {
+      window.location.href = '/login';
+  }
+
+  async function loadBook() {
+      const res = await fetch(`/api/books/${bookId}`, {headers: authHeader()});
+      if (!res.ok) { window.location.href = '/'; return; }
+
+      const book = await res.json();
+      document.title = book.title + ' - Library';
+      document.getElementById('book-container').innerHTML = `
+          <h2>${book.title}</h2>
+          <p><b>ISBN:</b> ${book.isbn || '-'}</p>
+          <p><b>Description:</b> ${book.description || '-'}</p>
+          <p><b>Year:</b> ${book.publishedYear || '-'}</p>
+          <p><b>Category:</b> ${book.categoryName || '-'}</p>
+          <p><b>Authors:</b> ${book.authorNames?.join(', ') || '-'}</p>
+          <p><b>Available copies:</b> ${book.availableCopies} / ${book.totalCopies}</p>
+      `;
+
+      if (book.availableCopies > 0) {
+          document.getElementById('borrow-section').style.display = 'block';
+          const today = new Date();
+          today.setDate(today.getDate() + 1);
+          document.getElementById('dueDate').min = today.toISOString().split('T')[0];
+      }
+  }
+
+  async function borrowBook() {
+      const dueDate = document.getElementById('dueDate').value;
+      if (!dueDate) { alert('Please select a due date'); return; }
+
+      const res = await fetch('/api/borrows', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getCookie('token')},
+          body: JSON.stringify({bookId: parseInt(bookId), dueDate})
+      });
+
+      const msg = document.getElementById('borrow-msg');
+      msg.style.display = 'block';
+      if (res.ok) {
+          msg.style.color = 'green';
+          msg.textContent = 'Book borrowed successfully!';
+          loadBook();
+      } else {
+          const err = await res.json();
+          msg.style.color = 'red';
+          msg.textContent = err.message || 'Failed to borrow';
+      }
+  }
+
+  loadBook();
+</script>
+
+</body>
+</html>
